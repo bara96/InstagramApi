@@ -82,7 +82,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = $this->_('Do the following steps to obtain an access_token');
         $fieldset->description = sprintf($this->_("Please provide following redirect url in your app: ** %s **"), $redirectUrl);
-        $fieldset->notes = $this->_("Redirect url should be on https");
+        $fieldset->notes = sprintf($this->_("You can set the redirect url on: ** %s ** \n Or create a new one on [facebook developers](%s)"), "https://developers.facebook.com/apps/{{YOUR-APP-ID}}/instagram-basic-display/", "https://developers.facebook.com");
         $form->add($fieldset);
 
         /** @var InputfieldFieldset $field */
