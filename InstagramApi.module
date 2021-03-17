@@ -29,10 +29,6 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             'requires' => [
                 'PHP>=5.6',
             ],
-            "permission" => "instagram-api",
-            "permissions" => array(
-                "instagram-api" => "Usage of Instagram api"
-            ),
             "page" => array(
                 "name" => "Instagram",
                 "parent" => "setup",
@@ -76,19 +72,19 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
 
         /** @var InputfieldForm $form */
         $form = $this->modules->get('InputfieldForm');
+        $form->action = "./settoken/";
 
         /** @var InputfieldFieldset $field */
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = $this->_('Do the following steps to obtain an access_token');
         $fieldset->description = sprintf($this->_("Please provide following redirect url in your app: ** %s **"), $redirectUrl);
-        $fieldset->notes = $this->_("Redirect url should be on https");
+        $fieldset->notes = sprintf($this->_("You can set the redirect url on: ** %s ** \n Or create a new one on [facebook developers](%s)"), "https://developers.facebook.com/apps/{{YOUR-APP-ID}}/instagram-basic-display/", "https://developers.facebook.com");
         $form->add($fieldset);
 
         /** @var InputfieldFieldset $field */
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = $this->_('Get an instagram code');
-        if(!empty($this->session->getFor($this, InstagramApi::code)))
-            $fieldset->description = sprintf($this->_('code is setted'), $this->code);
+        $fieldset->description = $this->_('This is the Instagram authorization code');
         $form->add($fieldset);
 
         /** @var InputfieldButton $f */
@@ -101,8 +97,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         /** @var InputfieldFieldset $field */
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = _('Get a short-lived token');
-        if(!empty($this->session->getFor($this, InstagramApi::short_lived_token)))
-            $fieldset->description = $this->_('short-lived token is setted');
+        $fieldset->description = $this->_('This is the Instagram short-lived API token (1 hour duration)');
         $form->add($fieldset);
 
         /** @var InputfieldButton $f */
@@ -119,8 +114,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         /** @var InputfieldFieldset $field */
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = _('Get a long-lived token');
-        if(!empty($this->session->getFor($this, InstagramApi::long_lived_token)))
-            $fieldset->description = $this->_('long-lived token is setted');
+        $fieldset->description = $this->_('This is the Instagram long-lived API token (2 month duration)');
         $form->add($fieldset);
 
         /** @var InputfieldText $f */
@@ -141,10 +135,19 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $f->showInHeader(false);
         $fieldset->add($f);
 
+        /** @var InputfieldSubmit $b */
+        $b = $this->modules->get('InputfieldSubmit');
+        $b->value = $this->_("Set Token");
+        $fieldset->add($b);
+
         /** @var InputfieldButton $f */
         $f = $this->modules->get('InputfieldButton');
-        $f->value = $this->_("Set Token");
-        $f->href = "./settoken/";
+        $f->value = $this->_("Refresh Access Token");
+        $f->href = "./refreshtoken/";
+        if(empty($this->getAccessToken())) {
+            $f->attr('disabled', 'disabled');
+            $f->addClass('ui-state-disabled');
+        }
         $f->showInHeader(false);
         $fieldset->add($f);
 
@@ -264,14 +267,69 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      */
     public function ___executeSetToken() {
         $input = $this->wire('input');
-        if($input->get('token')) {
+        if($input->post('token')) {
             $this->session->setFor($this, InstagramApi::long_lived_token, $input->get('token'));
             $this->message($this->_('Saved long-lived token'));
         }
         else
             $this->error($this->_('Token parameter is missing'));
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Get the authorization code from ig
+     */
+    public function ___executeRefreshToken() {
+        try {
+            $this->refreshAccessToken();
+            $this->message($this->_('access_token refreshed'));
+        }
+        catch (\Exception $e){
+            $this->error($e->getMessage());
+        }
 
         $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Refresh an access_token
+     *
+     * @throws InstagramApiException
+     * @throws WireException
+     */
+    public function refreshAccessToken(): bool
+    {
+        if(empty($this->getAccessToken())) {
+            throw new InstagramApiException($this->_("Access token not set"));
+        }
+
+        $http = new WireHttp();
+        $response = $http->get($this->graph_api_baseurl . "refresh_access_token", [
+            'access_token' => $this->getAccessToken(),
+            'grant_type' => 'ig_refresh_token',
+        ]);
+        if($response !== false) {
+            $res = json_decode($response);
+            if(empty($res)){
+                throw new InstagramApiException($this->_("Couldn't parse the response"));
+            }
+            else if(isset($res->error)){
+                if($res->error->code == 400) {  //token already used
+                    $this->session->removeAllFor($this);
+                }
+                throw new InstagramApiException($res->error->message);
+            }
+            else if(!empty($res->access_token)) {
+                $this->session->setFor($this, InstagramApi::long_lived_token, $res->access_token);
+                return true;
+            }
+            else {
+                throw new InstagramApiException($this->_("Unknown Response"));
+            }
+        }
+        else {
+            throw new InstagramApiException($this->_("Bad Response"));
+        }
     }
 
     /**
@@ -290,12 +348,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'username,account_type,media_count',
+            'fields' => IgUser::FIELDS,
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
@@ -311,11 +369,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      * Get user profile data
      *
      * @param string $userId
+     * @param int $limit
      * @param bool $jsonResponse
      * @return bool|mixed|string
      * @throws InstagramApiException
      */
-    public function getUserMedia($userId="me", bool $jsonResponse=false) {
+    public function getUserMedia($userId="me", $limit=30, bool $jsonResponse=false) {
         if(empty($this->getAccessToken())) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
@@ -323,12 +382,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId/media", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+            'fields' => IgMedia::FIELDS,
+            'limit' => $limit
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
@@ -360,12 +420,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$id/children", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+            'fields' => IgMedia::FIELDS,
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
@@ -391,11 +451,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $short = $this->session->getFor($this, InstagramApi::short_lived_token);
         $long = $this->session->getFor($this, InstagramApi::long_lived_token);
 
-        if(!empty($short))
-            return $short;
+        if(!empty($long)) {
+            return $long;
+        }
         else
-            if(!empty($long)) {
-                return $long;
+            if(!empty($short)) {
+                $this->warning($this->_("Warning: The saved access_token is a short-lived token"));
+                return $short;
             }
             else
                 return false;

@@ -6,7 +6,11 @@ namespace ProcessWire;
 
 class IgMedia
 {
-    protected string $id, $caption, $media_type, $media_url, $permalink, $thumbnail_url, $timestamp;
+    protected string $id, $caption, $media_type, $media_url, $permalink, $thumbnail_url, $timestamp, $username;
+    public const FIELDS = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,username';
+    public const TYPE_IMAGE = "IMAGE";
+    public const TYPE_VIDEO = "VIDEO";
+    public const TYPE_CAROUSEL_ALBUM = "CAROUSEL_ALBUM";
 
     public function __construct($igMedia) {
         if(!empty($igMedia)) {
@@ -17,6 +21,7 @@ class IgMedia
             $this->permalink = !empty($igMedia->permalink) ? $igMedia->permalink : "";
             $this->thumbnail_url = !empty($igMedia->thumbnail_url) ? $igMedia->thumbnail_url : "";
             $this->timestamp = $igMedia->timestamp;
+            $this->username = $igMedia->username;
         }
     }
 
@@ -132,5 +137,19 @@ class IgMedia
         $this->timestamp = $timestamp;
     }
 
+    /**
+     * @return string
+     */
+    public function getUsername(): string
+    {
+        return $this->username;
+    }
 
+    /**
+     * @param string $username
+     */
+    public function setUsername(string $username): void
+    {
+        $this->username = $username;
+    }
 }

@@ -7,6 +7,7 @@ namespace ProcessWire;
 class IgUser
 {
     protected string $username, $account_type, $media_count;
+    public const FIELDS = 'username,account_type,media_count';
 
     public function __construct($igMedia) {
         if(!empty($igMedia)) {
