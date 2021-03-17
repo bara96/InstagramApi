@@ -90,6 +90,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $fieldset->label = $this->_('Get an instagram code');
         if(!empty($this->session->getFor($this, InstagramApi::code)))
             $fieldset->description = sprintf($this->_('code is setted'), $this->code);
+        $fieldset->notes = $this->_("This is the Instagram authorization code");
         $form->add($fieldset);
 
         /** @var InputfieldButton $f */
@@ -104,6 +105,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $fieldset->label = _('Get a short-lived token');
         if(!empty($this->session->getFor($this, InstagramApi::short_lived_token)))
             $fieldset->description = $this->_('short-lived token is setted');
+        $fieldset->notes = $this->_("This is the Instagram short-lived API token (1 hour duration)");
         $form->add($fieldset);
 
         /** @var InputfieldButton $f */
@@ -122,6 +124,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $fieldset->label = _('Get a long-lived token');
         if(!empty($this->session->getFor($this, InstagramApi::long_lived_token)))
             $fieldset->description = $this->_('long-lived token is setted');
+        $fieldset->notes = $this->_("This is the Instagram long-lived API token (2 month duration)");
         $form->add($fieldset);
 
         /** @var InputfieldText $f */
