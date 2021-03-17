@@ -58,7 +58,8 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      *
      */
     public function init() {
-        require_once(__DIR__ . '/Media.php');
+        require_once(__DIR__ . '/IgMedia.php');
+        require_once(__DIR__ . '/IgUser.php');
         parent::init();
     }
 
@@ -281,7 +282,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      * @return bool|mixed|string
      * @throws InstagramApiException
      */
-    public function getUserProfile($userId="me", bool $json_decode=true) {
+    public function getUserProfile($userId="me", bool $jsonResponse=false) {
         if(empty($this->getAccessToken())) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
@@ -292,10 +293,14 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             'fields' => 'username,account_type,media_count',
         ]);
         if($response !== false) {
-            if($json_decode)
-                return json_decode($response);
-            else
-                return $response;
+            $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
+            if($jsonResponse)
+                return $json;
+            else {
+               return new IgUser($json);
+            }
         }
         else {
             return false;
@@ -322,12 +327,14 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         ]);
         if($response !== false) {
             $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
             if($jsonResponse)
                 return $json;
             else {
                 $medias = [];
                 foreach ($json->data as $media) {
-                    $medias [] = new Media($media);
+                    $medias [] = new IgMedia($media);
                 }
                 return $medias;
             }
@@ -340,12 +347,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     /**
      * Query the Media Children Edge
      *
-     * @param $id: ID of the album you want to query
-     * @param bool $json_decode
+     * @param $id : ID of the album you want to query
+     * @param bool $jsonResponse
      * @return bool|mixed|string
      * @throws InstagramApiException
      */
-    public function getMedia($id, bool $json_decode=true) {
+    public function getMedia($id, bool $jsonResponse=false) {
         if(empty($this->getAccessToken())) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
@@ -356,10 +363,14 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
         ]);
         if($response !== false) {
-            if($json_decode)
-                return json_decode($response);
-            else
-                return $response;
+            $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
+            if($jsonResponse)
+                return $json;
+            else {
+                return new IgMedia($json);
+            }
         }
         else {
             return false;

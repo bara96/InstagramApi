@@ -4,7 +4,7 @@
 namespace ProcessWire;
 
 
-class Media
+class IgMedia
 {
     protected string $id, $caption, $media_type, $media_url, $permalink, $thumbnail_url, $timestamp;
 
