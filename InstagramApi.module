@@ -290,7 +290,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'username,account_type,media_count',
+            'fields' => IgUser::fields,
         ]);
         if($response !== false) {
             $json = json_decode($response);
@@ -323,7 +323,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId/media", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+            'fields' => IgMedia::fields,
         ]);
         if($response !== false) {
             $json = json_decode($response);
@@ -360,7 +360,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$id/children", [
             'access_token' => $this->getAccessToken(),
-            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+            'fields' => IgMedia::fields,
         ]);
         if($response !== false) {
             $json = json_decode($response);
