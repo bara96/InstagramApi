@@ -58,6 +58,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      *
      */
     public function init() {
+        require_once(__DIR__ . '/Media.php');
         parent::init();
     }
 
@@ -121,6 +122,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             $fieldset->description = $this->_('long-lived token is setted');
         $form->add($fieldset);
 
+        /** @var InputfieldText $f */
+        $f = $this->modules->get("InputfieldText");
+        $f->attr('name', 'token');
+        $f->label = __("Current token");
+        $f->value = $this->getAccessToken();
+        $fieldset->add($f);
+
         /** @var InputfieldButton $f */
         $f = $this->modules->get('InputfieldButton');
         $f->value = $this->_("Step 3");
@@ -129,6 +137,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             $f->attr('disabled', 'disabled');
             $f->addClass('ui-state-disabled');
         }
+        $f->showInHeader(false);
+        $fieldset->add($f);
+
+        /** @var InputfieldButton $f */
+        $f = $this->modules->get('InputfieldButton');
+        $f->value = $this->_("Set Token");
+        $f->href = "./settoken/";
         $f->showInHeader(false);
         $fieldset->add($f);
 
@@ -244,6 +259,21 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     }
 
     /**
+     * Get the authorization code from ig
+     */
+    public function ___executeSetToken() {
+        $input = $this->wire('input');
+        if($input->get('token')) {
+            $this->session->setFor($this, InstagramApi::long_lived_token, $input->get('token'));
+            $this->message($this->_('Saved long-lived token'));
+        }
+        else
+            $this->error($this->_('Token parameter is missing'));
+
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
      * Get user profile data
      *
      * @param $userId
@@ -275,12 +305,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     /**
      * Get user profile data
      *
-     * @param $userId
-     * @param bool $json_decode
+     * @param string $userId
+     * @param bool $jsonResponse
      * @return bool|mixed|string
      * @throws InstagramApiException
      */
-    public function getUserMedia($userId="me", bool $json_decode=true) {
+    public function getUserMedia($userId="me", bool $jsonResponse=false) {
         if(empty($this->getAccessToken())) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
@@ -291,10 +321,16 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
         ]);
         if($response !== false) {
-            if($json_decode)
-                return json_decode($response);
-            else
-                return $response;
+            $json = json_decode($response);
+            if($jsonResponse)
+                return $json;
+            else {
+                $medias = [];
+                foreach ($json->data as $media) {
+                    $medias [] = new Media($media);
+                }
+                return $medias;
+            }
         }
         else {
             return false;
