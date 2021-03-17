@@ -1,4 +1,5 @@
 <?php namespace ProcessWire;
+
 /**
  * Google Client API
  *
@@ -13,12 +14,13 @@
 
 class InstagramApi extends Process implements Module, ConfigurableModule {
 
-    protected const code = "code";
-    protected const short_lived_token = "short_lived_token";
-    protected const long_lived_token = "long_lived_token";
+    protected const CODE = "code";
+    protected const SHORT_LIVED_TOKEN = "short_lived_token";
+    protected const LONG_LIVED_TOKEN = "long_lived_token";
+    protected const EXPIRES_ON = "expires_on";
 
-    protected $api_baseurl = "https://api.instagram.com/";
-    protected $graph_api_baseurl = "https://graph.instagram.com/";
+    protected string $api_baseurl = "https://api.instagram.com/";
+    protected string $graph_api_baseurl = "https://graph.instagram.com/";
 
     public static function getModuleInfo() {
         return array(
@@ -115,6 +117,8 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $fieldset = $this->modules->get('InputfieldFieldset');
         $fieldset->label = _('Get a long-lived token');
         $fieldset->description = $this->_('This is the Instagram long-lived API token (2 month duration)');
+        if(!empty($this->getExpirationDate()))
+            $fieldset->notes = sprintf($this->_("The access token will be **renewed automatically** within the week prior to expiry. \n**Token expire on**: %s"), $this->getExpirationDate());
         $form->add($fieldset);
 
         /** @var InputfieldText $f */
@@ -169,7 +173,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     public function ___executeAuth() {
         $input = $this->wire('input');
         if($input->get('code')) {
-            $this->session->setFor($this, InstagramApi::code, $input->get('code'));
+            $this->session->setFor($this, InstagramApi::CODE, $input->get('code'));
             $this->message($this->_('Saved ig code'));
         }
         else
@@ -182,7 +186,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      * Redirect to ig to get an authorization
      */
     public function ___executeStep2() {
-        if(empty($this->session->getFor($this, InstagramApi::code))) {
+        if(empty($this->session->getFor($this, InstagramApi::CODE))) {
             $this->error($this->_("Missing required field code"));
             $this->session->redirect($this->wire('page')->httpUrl());
         }
@@ -195,7 +199,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
             'client_secret' => $this->clientSecret,
             'grant_type' => 'authorization_code',
             'redirect_uri' => $redirectUrl,
-            'code' => $this->session->getFor($this, InstagramApi::code),
+            'code' => $this->session->getFor($this, InstagramApi::CODE),
         ]);
         if($response !== false) {
             $res = json_decode($response);
@@ -209,7 +213,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
                 $this->error($res->error_message);
             }
             else if(!empty($res->access_token)) {
-                $this->session->setFor($this, InstagramApi::short_lived_token, $res->access_token);
+                $this->session->setFor($this, InstagramApi::SHORT_LIVED_TOKEN, $res->access_token);
                 $this->message($this->_('Saved short-lived token'));
             }
             else {
@@ -226,7 +230,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      * Redirect to ig to get an authorization
      */
     public function ___executeStep3() {
-        if(empty($this->session->getFor($this, InstagramApi::short_lived_token))) {
+        if(empty($this->session->getFor($this, InstagramApi::SHORT_LIVED_TOKEN))) {
             $this->error($this->_("Missing required field short_lived_token"));
             $this->session->redirect($this->wire('page')->httpUrl());
         }
@@ -235,7 +239,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $response = $http->get($this->graph_api_baseurl . "access_token", [
             'client_secret' => $this->clientSecret,
             'grant_type' => 'ig_exchange_token',
-            'access_token' => $this->session->getFor($this, InstagramApi::short_lived_token),
+            'access_token' => $this->session->getFor($this, InstagramApi::SHORT_LIVED_TOKEN),
         ]);
         if($response !== false) {
             $res = json_decode($response);
@@ -249,7 +253,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
                 $this->error($res->error->message);
             }
             else if(!empty($res->access_token)) {
-                $this->session->setFor($this, InstagramApi::long_lived_token, $res->access_token);
+                $this->setAccessToken($res->access_token);
                 $this->message($this->_('Saved long-lived token'));
             }
             else {
@@ -268,7 +272,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     public function ___executeSetToken() {
         $input = $this->wire('input');
         if($input->post('token')) {
-            $this->session->setFor($this, InstagramApi::long_lived_token, $input->get('token'));
+            $this->session->setFor($this, InstagramApi::LONG_LIVED_TOKEN, $input->get('token'));
             $this->message($this->_('Saved long-lived token'));
         }
         else
@@ -294,18 +298,21 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     /**
      * Refresh an access_token
      *
+     * https://developers.facebook.com/docs/instagram-basic-display-api/reference/refresh_access_token
+     *
      * @throws InstagramApiException
      * @throws WireException
      */
-    public function refreshAccessToken(): bool
+    public function refreshAccessToken()
     {
-        if(empty($this->getAccessToken())) {
+        $access_token = $this->session->getFor($this, InstagramApi::LONG_LIVED_TOKEN);
+        if(empty($access_token)) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
 
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "refresh_access_token", [
-            'access_token' => $this->getAccessToken(),
+            'access_token' => $access_token,
             'grant_type' => 'ig_refresh_token',
         ]);
         if($response !== false) {
@@ -320,8 +327,8 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
                 throw new InstagramApiException($res->error->message);
             }
             else if(!empty($res->access_token)) {
-                $this->session->setFor($this, InstagramApi::long_lived_token, $res->access_token);
-                return true;
+                $this->setAccessToken($res->access_token);
+                return $res->access_token;
             }
             else {
                 throw new InstagramApiException($this->_("Unknown Response"));
@@ -333,7 +340,22 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     }
 
     /**
+     * Chek if expire_on time is less than a week
+     * @return bool
+     */
+    protected function checkExpiration() {
+        $today_time = strtotime("+1 week", );
+        $expire_time = $this->session->getFor($this, InstagramApi::EXPIRES_ON);
+        if (!empty($expire_time) && $today_time >= $expire_time)
+            return true;
+        else
+            return false;
+    }
+
+    /**
      * Get user profile data
+     *
+     * https://developers.facebook.com/docs/instagram-basic-display-api/reference/user
      *
      * @param $userId
      * @param bool $json_decode
@@ -367,6 +389,8 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
 
     /**
      * Get user profile data
+     *
+     * https://developers.facebook.com/docs/instagram-basic-display-api/reference/user/media
      *
      * @param string $userId
      * @param int $limit
@@ -407,6 +431,8 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     /**
      * Query the Media Children Edge
      *
+     * https://developers.facebook.com/docs/instagram-basic-display-api/reference/media
+     *
      * @param $id : ID of the album you want to query
      * @param bool $jsonResponse
      * @return bool|mixed|string
@@ -444,23 +470,39 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
     }
 
     /**
+     * Get token expiration date
+     */
+    protected function getExpirationDate() {
+        $time = $this->session->getFor($this, InstagramApi::EXPIRES_ON);
+        if(!empty($time)) {
+            return date("Y-m-d H:i:s", $time);
+        }
+        return false;
+    }
+
+    /**
+     * et long_lived_token and expires_on date
+     * @param $token
+     */
+    protected function setAccessToken($token) {
+        $this->session->setFor($this, InstagramApi::EXPIRES_ON, strtotime("+2 month", time()));
+        $this->session->setFor($this, InstagramApi::LONG_LIVED_TOKEN, $token);
+    }
+
+    /**
      * Get current access_token
      * @return false|mixed
      */
     protected function getAccessToken() {
-        $short = $this->session->getFor($this, InstagramApi::short_lived_token);
-        $long = $this->session->getFor($this, InstagramApi::long_lived_token);
+        $long = $this->session->getFor($this, InstagramApi::LONG_LIVED_TOKEN);
 
         if(!empty($long)) {
+            if($this->checkExpiration())
+                return $this->refreshAccessToken();
             return $long;
         }
         else
-            if(!empty($short)) {
-                $this->warning($this->_("Warning: The saved access_token is a short-lived token"));
-                return $short;
-            }
-            else
-                return false;
+            return false;
     }
 
     /**
