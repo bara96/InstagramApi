@@ -7,7 +7,10 @@ namespace ProcessWire;
 class IgMedia
 {
     protected string $id, $caption, $media_type, $media_url, $permalink, $thumbnail_url, $timestamp, $username;
-    public const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,username';
+    public const FIELDS = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,username';
+    public const TYPE_IMAGE = "IMAGE";
+    public const TYPE_VIDEO = "VIDEO";
+    public const TYPE_CAROUSEL_ALBUM = "CAROUSEL_ALBUM";
 
     public function __construct($igMedia) {
         if(!empty($igMedia)) {

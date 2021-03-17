@@ -288,12 +288,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId", [
             'access_token' => $this->getAccessToken(),
-            'fields' => IgUser::fields,
+            'fields' => IgUser::FIELDS,
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
@@ -309,11 +309,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      * Get user profile data
      *
      * @param string $userId
+     * @param int $limit
      * @param bool $jsonResponse
      * @return bool|mixed|string
      * @throws InstagramApiException
      */
-    public function getUserMedia($userId="me", bool $jsonResponse=false) {
+    public function getUserMedia($userId="me", $limit=30, bool $jsonResponse=false) {
         if(empty($this->getAccessToken())) {
             throw new InstagramApiException($this->_("Access token not set"));
         }
@@ -321,12 +322,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$userId/media", [
             'access_token' => $this->getAccessToken(),
-            'fields' => IgMedia::fields,
+            'fields' => IgMedia::FIELDS,
+            'limit' => $limit
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
@@ -358,12 +360,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $http = new WireHttp();
         $response = $http->get($this->graph_api_baseurl . "$id/children", [
             'access_token' => $this->getAccessToken(),
-            'fields' => IgMedia::fields,
+            'fields' => IgMedia::FIELDS,
         ]);
         if($response !== false) {
             $json = json_decode($response);
             if(isset($json->error))
-                return $json->error;
+                throw new InstagramApiException($json->error->message);
             if($jsonResponse)
                 return $json;
             else {
