@@ -1,0 +1,422 @@
+<?php namespace ProcessWire;
+/**
+ * Google Client API
+ *
+ * ~~~~~
+ *
+ * CONFIG SETTINGS
+ * @property string $clientId
+ * @property string $clientSecret
+ * @property array $scopes
+ * @property array $url
+ */
+
+class InstagramApi extends Process implements Module, ConfigurableModule {
+
+    protected const code = "code";
+    protected const short_lived_token = "short_lived_token";
+    protected const long_lived_token = "long_lived_token";
+
+    protected $api_baseurl = "https://api.instagram.com/";
+    protected $graph_api_baseurl = "https://graph.instagram.com/";
+
+    public static function getModuleInfo() {
+        return array(
+            'title' => 'Instagram Api',
+            'version' => 1,
+            'summary' => 'Base module to interface with Instragram Graph API',
+            'icon' => 'instagram',
+            'requires' => [
+                'PHP>=5.6',
+            ],
+            "permission" => "instagram-api",
+            "permissions" => array(
+                "instagram-api" => "Usage of Instagram api"
+            ),
+            "page" => array(
+                "name" => "Instagram",
+                "parent" => "setup",
+                "title" => "Instagram"
+            ),
+        );
+    }
+
+    public function __construct() {
+        $this->set('clientId', '');
+        $this->set('clientSecret', '');
+        $this->set('code', '');
+        $this->set('short_lived_token', '');
+        $this->set('long_lived_token', '');
+        $this->set('scopes', array('user_profile', 'user_media'));
+        $this->set('url', '');
+
+        parent::__construct();
+    }
+
+    /**
+     * Initialize the module
+     *
+     */
+    public function init() {
+        require_once(__DIR__ . '/IgMedia.php');
+        require_once(__DIR__ . '/IgUser.php');
+        parent::init();
+    }
+
+    /**
+     * This function is executed when a page with your Process assigned is accessed.
+     *
+     * This can be seen as your main or index function. You'll probably want to replace
+     * everything in this function.
+     *
+     */
+    public function ___execute() {
+        $redirectUrl = $this->wire('page')->httpUrl() . "auth";
+        $redirectUrl = str_replace("http:", "https:", $redirectUrl);
+
+        /** @var InputfieldForm $form */
+        $form = $this->modules->get('InputfieldForm');
+
+        /** @var InputfieldFieldset $field */
+        $fieldset = $this->modules->get('InputfieldFieldset');
+        $fieldset->label = $this->_('Do the following steps to obtain an access_token');
+        $fieldset->description = sprintf($this->_("Please provide following redirect url in your app: ** %s **"), $redirectUrl);
+        $fieldset->notes = $this->_("Redirect url should be on https");
+        $form->add($fieldset);
+
+        /** @var InputfieldFieldset $field */
+        $fieldset = $this->modules->get('InputfieldFieldset');
+        $fieldset->label = $this->_('Get an instagram code');
+        if(!empty($this->session->getFor($this, InstagramApi::code)))
+            $fieldset->description = sprintf($this->_('code is setted'), $this->code);
+        $form->add($fieldset);
+
+        /** @var InputfieldButton $f */
+        $f = $this->modules->get('InputfieldButton');
+        $f->value = $this->_("Step 1");
+        $f->href = "./step1/";
+        $f->showInHeader(false);
+        $fieldset->add($f);
+
+        /** @var InputfieldFieldset $field */
+        $fieldset = $this->modules->get('InputfieldFieldset');
+        $fieldset->label = _('Get a short-lived token');
+        if(!empty($this->session->getFor($this, InstagramApi::short_lived_token)))
+            $fieldset->description = $this->_('short-lived token is setted');
+        $form->add($fieldset);
+
+        /** @var InputfieldButton $f */
+        $f = $this->modules->get('InputfieldButton');
+        $f->value = $this->_("Step 2");
+        $f->href = "./step2/";
+        if(empty($this->code)) {
+            $f->attr('disabled', 'disabled');
+            $f->addClass('ui-state-disabled');
+        }
+        $f->showInHeader(false);
+        $fieldset->add($f);
+
+        /** @var InputfieldFieldset $field */
+        $fieldset = $this->modules->get('InputfieldFieldset');
+        $fieldset->label = _('Get a long-lived token');
+        if(!empty($this->session->getFor($this, InstagramApi::long_lived_token)))
+            $fieldset->description = $this->_('long-lived token is setted');
+        $form->add($fieldset);
+
+        /** @var InputfieldText $f */
+        $f = $this->modules->get("InputfieldText");
+        $f->attr('name', 'token');
+        $f->label = __("Current token");
+        $f->value = $this->getAccessToken();
+        $fieldset->add($f);
+
+        /** @var InputfieldButton $f */
+        $f = $this->modules->get('InputfieldButton');
+        $f->value = $this->_("Step 3");
+        $f->href = "./step3/";
+        if(empty($this->short_lived_token)) {
+            $f->attr('disabled', 'disabled');
+            $f->addClass('ui-state-disabled');
+        }
+        $f->showInHeader(false);
+        $fieldset->add($f);
+
+        /** @var InputfieldButton $f */
+        $f = $this->modules->get('InputfieldButton');
+        $f->value = $this->_("Set Token");
+        $f->href = "./settoken/";
+        $f->showInHeader(false);
+        $fieldset->add($f);
+
+        return $form->render();
+    }
+
+    /**
+     * Redirect to ig to get an authorization
+     */
+    public function ___executeStep1() {
+        $redirectUrl = $this->wire('page')->httpUrl() . "auth";
+        $redirectUrl = str_replace("http:", "https:", $redirectUrl);
+        $this->wire("session")->redirect($this->api_baseurl . "oauth/authorize?client_id=". $this->clientId ."&redirect_uri=". $redirectUrl ."&scope=". implode(",", $this->scopes) ."&response_type=code");
+    }
+
+    /**
+     * Get the authorization code from ig
+     */
+    public function ___executeAuth() {
+        $input = $this->wire('input');
+        if($input->get('code')) {
+            $this->session->setFor($this, InstagramApi::code, $input->get('code'));
+            $this->message($this->_('Saved ig code'));
+        }
+        else
+            $this->error($this->_('Code parameter is missing'));
+
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Redirect to ig to get an authorization
+     */
+    public function ___executeStep2() {
+        if(empty($this->session->getFor($this, InstagramApi::code))) {
+            $this->error($this->_("Missing required field code"));
+            $this->session->redirect($this->wire('page')->httpUrl());
+        }
+        $redirectUrl = $this->wire('page')->httpUrl() . "auth";
+        $redirectUrl = str_replace("http:", "https:", $redirectUrl);
+
+        $http = new WireHttp();
+        $response = $http->post($this->api_baseurl . "oauth/access_token", [
+            'client_id' => $this->clientId,
+            'client_secret' => $this->clientSecret,
+            'grant_type' => 'authorization_code',
+            'redirect_uri' => $redirectUrl,
+            'code' => $this->session->getFor($this, InstagramApi::code),
+        ]);
+        if($response !== false) {
+            $res = json_decode($response);
+            if(empty($res)){
+                $this->error($this->_("Couldn't parse the response"));
+            }
+            else if(isset($res->error_message)){
+                if($res->code == 400) {  //code already used
+                    $this->session->removeAllFor($this);
+                }
+                $this->error($res->error_message);
+            }
+            else if(!empty($res->access_token)) {
+                $this->session->setFor($this, InstagramApi::short_lived_token, $res->access_token);
+                $this->message($this->_('Saved short-lived token'));
+            }
+            else {
+                $this->error($this->_("Unknown Response"));
+            }
+        }
+        else {
+            $this->error($this->_("Bad Response"));
+        }
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Redirect to ig to get an authorization
+     */
+    public function ___executeStep3() {
+        if(empty($this->session->getFor($this, InstagramApi::short_lived_token))) {
+            $this->error($this->_("Missing required field short_lived_token"));
+            $this->session->redirect($this->wire('page')->httpUrl());
+        }
+
+        $http = new WireHttp();
+        $response = $http->get($this->graph_api_baseurl . "access_token", [
+            'client_secret' => $this->clientSecret,
+            'grant_type' => 'ig_exchange_token',
+            'access_token' => $this->session->getFor($this, InstagramApi::short_lived_token),
+        ]);
+        if($response !== false) {
+            $res = json_decode($response);
+            if(empty($res)){
+                $this->error($this->_("Couldn't parse the response"));
+            }
+            else if(isset($res->error)){
+                if($res->error->code == 400) {  //token already used
+                    $this->session->removeAllFor($this);
+                }
+                $this->error($res->error->message);
+            }
+            else if(!empty($res->access_token)) {
+                $this->session->setFor($this, InstagramApi::long_lived_token, $res->access_token);
+                $this->message($this->_('Saved long-lived token'));
+            }
+            else {
+                $this->error($this->_("Unknown Response"));
+            }
+        }
+        else {
+            $this->error($this->_("Bad Response"));
+        }
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Get the authorization code from ig
+     */
+    public function ___executeSetToken() {
+        $input = $this->wire('input');
+        if($input->get('token')) {
+            $this->session->setFor($this, InstagramApi::long_lived_token, $input->get('token'));
+            $this->message($this->_('Saved long-lived token'));
+        }
+        else
+            $this->error($this->_('Token parameter is missing'));
+
+        $this->session->redirect($this->wire('page')->httpUrl());
+    }
+
+    /**
+     * Get user profile data
+     *
+     * @param $userId
+     * @param bool $json_decode
+     * @return bool|mixed|string
+     * @throws InstagramApiException
+     */
+    public function getUserProfile($userId="me", bool $jsonResponse=false) {
+        if(empty($this->getAccessToken())) {
+            throw new InstagramApiException($this->_("Access token not set"));
+        }
+
+        $http = new WireHttp();
+        $response = $http->get($this->graph_api_baseurl . "$userId", [
+            'access_token' => $this->getAccessToken(),
+            'fields' => 'username,account_type,media_count',
+        ]);
+        if($response !== false) {
+            $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
+            if($jsonResponse)
+                return $json;
+            else {
+               return new IgUser($json);
+            }
+        }
+        else {
+            return false;
+        }
+    }
+
+    /**
+     * Get user profile data
+     *
+     * @param string $userId
+     * @param bool $jsonResponse
+     * @return bool|mixed|string
+     * @throws InstagramApiException
+     */
+    public function getUserMedia($userId="me", bool $jsonResponse=false) {
+        if(empty($this->getAccessToken())) {
+            throw new InstagramApiException($this->_("Access token not set"));
+        }
+
+        $http = new WireHttp();
+        $response = $http->get($this->graph_api_baseurl . "$userId/media", [
+            'access_token' => $this->getAccessToken(),
+            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+        ]);
+        if($response !== false) {
+            $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
+            if($jsonResponse)
+                return $json;
+            else {
+                $medias = [];
+                foreach ($json->data as $media) {
+                    $medias [] = new IgMedia($media);
+                }
+                return $medias;
+            }
+        }
+        else {
+            return false;
+        }
+    }
+
+    /**
+     * Query the Media Children Edge
+     *
+     * @param $id : ID of the album you want to query
+     * @param bool $jsonResponse
+     * @return bool|mixed|string
+     * @throws InstagramApiException
+     */
+    public function getMedia($id, bool $jsonResponse=false) {
+        if(empty($this->getAccessToken())) {
+            throw new InstagramApiException($this->_("Access token not set"));
+        }
+
+        $http = new WireHttp();
+        $response = $http->get($this->graph_api_baseurl . "$id/children", [
+            'access_token' => $this->getAccessToken(),
+            'fields' => 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp',
+        ]);
+        if($response !== false) {
+            $json = json_decode($response);
+            if(isset($json->error))
+                return $json->error;
+            if($jsonResponse)
+                return $json;
+            else {
+                return new IgMedia($json);
+            }
+        }
+        else {
+            return false;
+        }
+    }
+
+    public function getModuleConfigInputfields(InputfieldWrapper $inputfields) {
+        require_once(__DIR__ . '/config.php');
+        $cfg = new InstagramConfigure($this);
+        $cfg->getInputfields($inputfields);
+    }
+
+    /**
+     * Get current access_token
+     * @return false|mixed
+     */
+    protected function getAccessToken() {
+        $short = $this->session->getFor($this, InstagramApi::short_lived_token);
+        $long = $this->session->getFor($this, InstagramApi::long_lived_token);
+
+        if(!empty($short))
+            return $short;
+        else
+            if(!empty($long)) {
+                return $long;
+            }
+            else
+                return false;
+    }
+
+    /**
+     * Install
+     *
+     * @throws WireException
+     *
+     */
+    public function ___install() {
+        parent::___install();
+    }
+
+    /**
+     * Uninstall
+     *
+     */
+    public function ___uninstall() {
+        parent::___uninstall();
+    }
+}
+class InstagramApiException extends WireException {}
