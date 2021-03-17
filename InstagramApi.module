@@ -76,6 +76,7 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
 
         /** @var InputfieldForm $form */
         $form = $this->modules->get('InputfieldForm');
+        $form->action = "./settoken/";
 
         /** @var InputfieldFieldset $field */
         $fieldset = $this->modules->get('InputfieldFieldset');
@@ -141,12 +142,10 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $f->showInHeader(false);
         $fieldset->add($f);
 
-        /** @var InputfieldButton $f */
-        $f = $this->modules->get('InputfieldButton');
-        $f->value = $this->_("Set Token");
-        $f->href = "./settoken/";
-        $f->showInHeader(false);
-        $fieldset->add($f);
+        /** @var InputfieldSubmit $b */
+        $b = $this->modules->get('InputfieldSubmit');
+        $b->value = $this->_("Set Token");
+        $fieldset->add($b);
 
         return $form->render();
     }
@@ -264,13 +263,12 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
      */
     public function ___executeSetToken() {
         $input = $this->wire('input');
-        if($input->get('token')) {
+        if($input->post('token')) {
             $this->session->setFor($this, InstagramApi::long_lived_token, $input->get('token'));
             $this->message($this->_('Saved long-lived token'));
         }
         else
             $this->error($this->_('Token parameter is missing'));
-
         $this->session->redirect($this->wire('page')->httpUrl());
     }
 
@@ -391,11 +389,13 @@ class InstagramApi extends Process implements Module, ConfigurableModule {
         $short = $this->session->getFor($this, InstagramApi::short_lived_token);
         $long = $this->session->getFor($this, InstagramApi::long_lived_token);
 
-        if(!empty($short))
-            return $short;
+        if(!empty($long)) {
+            return $long;
+        }
         else
-            if(!empty($long)) {
-                return $long;
+            if(!empty($short)) {
+                $this->warning($this->_("Warning: The saved access_token is a short-lived token"));
+                return $short;
             }
             else
                 return false;
