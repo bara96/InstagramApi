@@ -1,5 +1,5 @@
 # InstagramAPI
-Instagram Basic Display API module for Processwire.
+Instagram Basic Display API module for [Processwire](https://processwire.com/).
 
 ## Requirements
 * ProcessWire >= 5.6
